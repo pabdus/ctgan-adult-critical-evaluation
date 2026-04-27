@@ -1,0 +1,22 @@
+# Core data science
+pandas==2.2.3
+numpy==1.26.4
+scipy==1.14.1
+scikit-learn==1.5.2
+
+# CTGAN y modelos generativos
+ctgan==0.10.2
+
+# Visualization
+matplotlib==3.9.2
+seaborn==0.13.2
+
+# Deep learning backend
+torch==2.4.1
+
+# Notebook
+jupyter==1.1.1
+ipykernel==6.29.5
+
+# Utilidades
+tqdm==4.66.5

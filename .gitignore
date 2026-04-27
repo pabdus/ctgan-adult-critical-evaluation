@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+.jupyter/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Data files (datasets pesados no se suben a git)
+data/raw/*.csv
+data/raw/*.parquet
+data/raw/*.zip
+data/processed/
+
+# Results pesados (modelos entrenados, JSONs grandes)
+results/**/*.pkl
+results/**/*.pt
+results/**/*.pth
+
+# Secrets - CRÍTICO
+.env
+.env.local
+*.key
+secrets.json
+api_keys.txt
+
+# Logs
+*.log
+logs/
+
+# Mantener la estructura de carpetas vacías
+!data/raw/.gitkeep
+!results/v1_baseline/.gitkeep
+!results/v2_improved/.gitkeep
