@@ -4,8 +4,27 @@ A rigorous, multi-dimensional evaluation of CTGAN for tabular synthetic data gen
 
 [![Python](https://img.shields.io/badge/Python-3.14-blue.svg)](https://www.python.org/)
 [![CTGAN](https://img.shields.io/badge/CTGAN-0.10-orange.svg)](https://github.com/sdv-dev/CTGAN)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.4-red.svg)](https://pytorch.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/Status-Complete-success.svg)]()
+
+---
+
+## Table of Contents
+
+- [TL;DR](#tldr)
+- [The Hero Finding](#the-hero-finding)
+- [Findings at a Glance](#findings-at-a-glance)
+- [Motivation](#motivation)
+- [Methodology](#methodology)
+- [Five Key Findings](#five-key-findings)
+- [Detailed Results](#detailed-results)
+- [What This Project Demonstrates](#what-this-project-demonstrates)
+- [Limitations & Future Work](#limitations--future-work)
+- [Reproducibility](#reproducibility)
+- [Tech Stack](#tech-stack)
+- [Repository Structure](#repository-structure)
+- [References](#references)
 
 ---
 
@@ -15,18 +34,10 @@ This project evaluates three variants of CTGAN on the UCI Adult Census Income da
 
 **Key result**: the standard CTGAN baseline (V1) generates **62% logically invalid values** (negative capital gains) despite achieving favorable distributional metrics. Two interventions were tested:
 
-- **V2** (log-transform + clip): fixed validity at the cost of predictive utility and induced partial mode collapse
-- **V3b** (clip-only post-processing): achieved validity AND preserved utility, with a single line of code
+- **V2** (log-transform + clip): fixed validity at the cost of predictive utility and induced partial mode collapse.
+- **V3b** (clip-only post-processing): achieved validity AND preserved utility, with a single line of code.
 
-**The diagnostic revealed three trade-offs that any production deployment of CTGAN must consider:**
-
-| Variant | Validity | Utility (AUC) | Diversity | Privacy (MIA) |
-|---|---|---|---|---|
-| V1 baseline | ✗ 62% invalid | **0.978** | ✓ best | ✗ AUC 0.85 |
-| V2 log+clip | ✓ 0% invalid | 0.951 | ✗ collapse | ✓ AUC 0.66 |
-| **V3b clip only** | ✓ 0% invalid | **0.969** | ✓ second | AUC 0.74 |
-
-There is no universally best variant — the optimal choice depends on the application's priority (predictive accuracy vs. anonymization vs. regulatory compliance).
+There is no universally best variant. The optimal choice depends on the application's priority: predictive accuracy, anonymization, or regulatory compliance.
 
 ---
 
@@ -34,9 +45,28 @@ There is no universally best variant — the optimal choice depends on the appli
 
 ![Zero-inflated comparison](results/v2_improved/plots/zero_inflated_comparison.png)
 
-The V1 baseline distributes synthetic mass symmetrically around zero, generating thousands of impossible negative capital values. Standard distributional metrics (Wasserstein, JSD) failed to detect this because they are **invariant to logical validity** — they measure only how much "transport cost" is needed between distributions, not whether the destination values are semantically valid.
+The V1 baseline distributes synthetic mass symmetrically around zero, generating thousands of impossible negative capital values. Standard distributional metrics (Wasserstein, JSD) failed to detect this because they are **invariant to logical validity** — they measure how much "transport cost" is needed between distributions, not whether the destination values are semantically valid.
 
 This single finding motivated the entire diagnostic effort that followed.
+
+---
+
+## Findings at a Glance
+
+| Dimension                | V1 baseline      | V2 (log + clip)    | V3b (clip only)   |
+|--------------------------|------------------|--------------------|-------------------|
+| Negative values          | ✗ 62% invalid   | ✓ 0% invalid       | ✓ 0% invalid      |
+| Mass at zero (gain)      | 1.15%            | 90.85%             | 63.10%            |
+| Wasserstein (avg %)      | 1.75%            | 1.98%              | 1.75%             |
+| JSD (max categorical)    | 0.0402           | 0.0269             | 0.0402            |
+| Frobenius relative       | 10.38%           | **9.04%**          | 10.38%            |
+| TSTR Accuracy ratio      | **0.978**        | 0.946              | 0.973             |
+| TSTR AUC ratio           | **0.978**        | 0.951              | 0.969             |
+| TSTR F1 ratio            | 0.923            | **0.924**          | 0.901             |
+| Continuous diversity     | ✓ 0.2% matches  | ✗ 47% mode collapse | ✓ 28% matches    |
+| MIA Attack AUC (privacy) | ✗ 0.852          | ✓ 0.663            | 0.738             |
+
+Bold = best in row. Each variant wins on at least one dimension. **No single variant dominates the others.**
 
 ---
 
@@ -60,53 +90,73 @@ The answers to these questions, derived from controlled experiments on Adult Cen
 
 ## Methodology
 
+### Pipeline overview
+
+```mermaid
+flowchart TD
+    A[Adult Census<br/>32,561 × 15] --> B[Drop missing<br/>~7.4%]
+    B --> C[Drop fnlwgt<br/>30,162 × 14]
+    C --> D[Stratified split<br/>by income]
+    D --> E[Train<br/>10,000 rows]
+    D --> F[Holdout<br/>20,162 rows]
+    E --> G1[V1 baseline<br/>standard CTGAN]
+    E --> G2[V2 improved<br/>log1p + clip]
+    G1 --> H1[Synthetic V1]
+    G2 --> H2[Synthetic V2]
+    H1 --> I[V3b<br/>clip-only post-hoc]
+    F --> J[Evaluation Suite]
+    H1 --> J
+    H2 --> J
+    I --> J
+    J --> K[5 metrics × 3 variants<br/>= 15 evaluations]
+```
 
 ### Three variants compared
 
-| Variant | Log-transform on capital.* | Clip negatives | Description |
-|---|---|---|---|
-| V1 | No | No | Standard CTGAN baseline |
-| V2 | Yes (log1p) | Yes | Both interventions combined |
-| V3b | No | Yes (post-hoc) | Diagnostic isolating clip's effect |
+| Variant | Log-transform on capital.* | Clip negatives | Description                      |
+|---------|---------------------------|----------------|----------------------------------|
+| V1      | No                        | No             | Standard CTGAN baseline          |
+| V2      | Yes (log1p)               | Yes            | Both interventions combined      |
+| V3b     | No                        | Yes (post-hoc) | Diagnostic isolating clip's effect |
 
 V3a (V2 without rounding), V3c (log without clip), and V3d (V2 with 500 epochs) are documented as future work — see [Limitations](#limitations--future-work).
 
 ### Five evaluation metrics
 
-| Metric | Dimension | What it measures |
-|---|---|---|
-| Wasserstein distance | Fidelity (continuous) | Distributional distance variable-by-variable |
-| Jensen-Shannon Divergence | Fidelity (categorical) | Categorical distribution alignment |
-| Frobenius norm | Multivariate structure | Correlation matrix preservation |
-| TSTR (Random Forest) | Utility | Predictive performance on real holdout |
-| DCR + MIA | Memorization & Privacy | Geometric and adversarial leakage |
+| Metric                      | Dimension              | What it measures                             |
+|-----------------------------|------------------------|----------------------------------------------|
+| Wasserstein distance        | Fidelity (continuous)  | Distributional distance variable-by-variable |
+| Jensen-Shannon Divergence   | Fidelity (categorical) | Categorical distribution alignment           |
+| Frobenius norm              | Multivariate structure | Correlation matrix preservation              |
+| TSTR (Random Forest)        | Utility                | Predictive performance on real holdout       |
+| DCR + MIA                   | Memorization & Privacy | Geometric and adversarial leakage            |
 
 Plus a domain-specific **logical validity check** (negative-value audit) added during the analysis after detecting the V1 failure.
 
 ---
 
-## Key Findings
+## Five Key Findings
 
 ### Finding 1 — Distributional metrics hide structural failures
 
-The V1 baseline scored **excellently** on Wasserstein for the zero-inflated capital variables (relative distances of 0.60% and 1.47%), passing standard fidelity checks. A direct audit revealed:
+The V1 baseline scored excellently on Wasserstein for the zero-inflated capital variables (relative distances of 0.60% and 1.47%), passing standard fidelity checks. A direct audit revealed:
 
-- 6,195 of 10,000 synthetic `capital.gain` values were negative (61.95%)
-- 3,570 of 10,000 synthetic `capital.loss` values were negative (35.70%)
+- **6,195 of 10,000** synthetic `capital.gain` values were negative (**61.95%**)
+- **3,570 of 10,000** synthetic `capital.loss` values were negative (**35.70%**)
 
 Both quantities are impossible by definition (capital gains and losses cannot be negative), yet Wasserstein gave them favorable scores because the metric is invariant to value validity.
 
-**Lesson**: distributional fidelity ≠ semantic validity. Domain validation must complement statistical metrics.
+> **Lesson**: distributional fidelity ≠ semantic validity. Domain validation must complement statistical metrics.
 
 ### Finding 2 — V2 fixed validity but introduced new failures
 
-The log1p + clip pipeline (V2) eliminated 100% of negative values and recovered the mass at zero (90.85% in V2 vs 91.92% real for capital.gain). However:
+The log1p + clip pipeline (V2) eliminated 100% of negative values and recovered the mass at zero (**90.85% in V2 vs 91.92% real** for capital.gain). However:
 
-- TSTR Accuracy dropped from 0.978 (V1) to 0.946 (V2)
-- TSTR AUC dropped from 0.978 to 0.951
-- 47% of V2's synthetic samples were exact-match combinations of real records on the 5 continuous variables — a manifestation of **partial mode collapse**
+- TSTR Accuracy dropped from **0.978 (V1)** to **0.946 (V2)**
+- TSTR AUC dropped from **0.978** to **0.951**
+- **47% of V2's synthetic samples** were exact-match combinations of real records on the 5 continuous variables — a manifestation of **partial mode collapse**
 
-The same combination `(age=28, education=9, capital.gain=0, capital.loss=0, hours.per.week=40)` appeared 79 times in 10,000 samples. The log-transform compressed the continuous space too aggressively, causing the model to converge to population-typical profiles.
+The same combination `(age=28, education=9, capital.gain=0, capital.loss=0, hours.per.week=40)` appeared **79 times in 10,000 samples**. The log-transform compressed the continuous space too aggressively, causing the model to converge to population-typical profiles.
 
 ### Finding 3 — V3b: the simpler solution wins on utility
 
@@ -125,11 +175,11 @@ synthetic[col] = synthetic[col].clip(lower=0)
 
 A Membership Inference Attack revealed that the variants' privacy profiles **inverted** their utility profiles:
 
-| Variant | TSTR AUC (utility) | MIA AUC (lower = more private) |
-|---|---|---|
-| V1 | 0.978 best | **0.852 worst leakage** |
-| V2 | 0.951 worst | **0.663 best privacy** |
-| V3b | 0.969 second | 0.738 intermediate |
+| Variant | TSTR AUC (utility) | MIA AUC (lower = more private)        |
+|---------|--------------------|---------------------------------------|
+| V1      | **0.978** best     | **0.852** worst leakage               |
+| V2      | 0.951 worst        | **0.663** best privacy                |
+| V3b     | 0.969 second       | 0.738 intermediate                    |
 
 V2's mode collapse, which hurt utility, **paradoxically protected privacy**: when the model converges to population-typical profiles, both members and non-members have similar distances to the synthetic samples, denying the attacker its discriminative signal.
 
@@ -137,7 +187,7 @@ V2's mode collapse, which hurt utility, **paradoxically protected privacy**: whe
 
 The standard DCR metric reported V2 with `dcr_to_holdout = 0.0000`, which the heuristic interpretation classified as "perfect generalization". In reality, this was caused by 52% exact-match rates between V2's synthetic samples and the holdout — modal degeneracy, not memorization.
 
-**Lesson**: privacy and diversity require multiple complementary metrics. Geometric memorization checks (DCR) and adversarial attacks (MIA) capture different failure modes.
+> **Lesson**: privacy and diversity require multiple complementary metrics. Geometric memorization checks (DCR) and adversarial attacks (MIA) capture different failure modes.
 
 ---
 
@@ -146,14 +196,17 @@ The standard DCR metric reported V2 with `dcr_to_holdout = 0.0000`, which the he
 ### Distributional fidelity
 
 ![Continuous distributions](results/v1_baseline/plots/continuous_distributions.png)
+
 *Real vs. V1 synthetic — continuous variables. The apparent overlap on capital.gain hides the 62% of negative values audited separately.*
 
 ![Categorical distributions](results/v1_baseline/plots/categorical_distributions.png)
+
 *Real vs. V1 synthetic — selected categorical variables. JSD scores all under 0.05 confirm that CTGAN's Conditional Sampling successfully prevented mode collapse on native.country (40 categories with extreme imbalance).*
 
 ### Correlation preservation
 
 ![Correlation comparison V1](results/v1_baseline/plots/correlation_comparison.png)
+
 *V1 correlation analysis — Frobenius relative norm 10.38%. The age × hours.per.week correlation was inflated from 0.11 (real) to 0.21 (synthetic), an example of spurious dependency amplification.*
 
 V2 reduced this distortion to 9.04% Frobenius relative norm and lowered the age × hours.per.week deviation by 38%.
@@ -161,11 +214,45 @@ V2 reduced this distortion to 9.04% Frobenius relative norm and lowered the age 
 ### TSTR utility comparison
 
 ![TSTR comparison](results/v2_improved/plots/tstr_comparison.png)
+
 *V1 vs V2 utility ratios (TSTR / real-train baseline). V1 wins on accuracy and AUC; V2 marginally wins on F1.*
 
 ### Privacy via MIA
 
-V1's attacker AUC of 0.852 means a privacy adversary can correctly identify training-set members from non-members with 75% accuracy using only the synthetic data — a serious vulnerability for any anonymization use case.
+![MIA comparison](results/v2_improved/plots/mia_comparison.png)
+
+*Attacker AUC across the three variants. V1's AUC of 0.852 means a privacy adversary can correctly identify training-set members from non-members with 75% accuracy using only the synthetic data — a serious vulnerability for any anonymization use case.*
+
+---
+
+## What This Project Demonstrates
+
+This repository is intended as a portfolio piece. For reviewers evaluating technical depth, the project showcases:
+
+**Engineering practices**
+- Modular Python architecture (`src/` separated from `notebooks/`)
+- Centralized configuration (`src/config.py`) — no magic numbers in production code
+- Type hints and NumPy-style docstrings throughout
+- Pure functions with single-responsibility design (Single Responsibility Principle)
+- Pinned dependencies in `requirements.txt` for exact reproducibility
+- Conventional Commits semantic history (`feat:`, `chore:`, `docs:`, `refactor:`)
+
+**Statistical and ML rigor**
+- Stratified train/holdout split with a hard separation for unbiased TSTR
+- Five complementary evaluation metrics covering four orthogonal dimensions
+- Implementation of Membership Inference Attack from scratch (not just imported)
+- Critical analysis that detected and diagnosed three subtle failure modes (logical invalidity, mode collapse, privacy leakage paradox)
+
+**Methodological honesty**
+- Documented results that contradict initial hypotheses (V2's TSTR loss)
+- Explicit trade-off framing rather than "everything improved"
+- Future work clearly enumerated with concrete experimental designs (V3a, V3c, V3d)
+- Limitations of standard metrics discussed, not hidden
+
+**Domain awareness**
+- Identified zero-inflated variables as a class of cases where CTGAN's Mode-Specific Normalization fails
+- Connected the failure mode to real-world domains (healthcare LOS, e-commerce refunds, insurance claims)
+- Used Adult Census, the standard CTGAN benchmark from the original paper
 
 ---
 
@@ -184,6 +271,8 @@ This evaluation is constrained by scope and computational budget. Identified dir
 **Differential privacy guarantees.** This project measured privacy empirically via MIA but did not provide formal guarantees. CTGAN with differentially private SGD (DP-SGD) would offer provable bounds at the cost of utility.
 
 **Larger dataset and TVAE comparison.** The 10,000-sample subset enabled tractable iteration; full Adult (~30,000 cleaned rows) and a head-to-head comparison against TVAE would strengthen external validity.
+
+**Asymmetric holdout DCR.** The current DCR implementation does not normalize for the size difference between train (10K) and holdout (20K). A future iteration should subsample the holdout to match train size before computing nearest-neighbor distances.
 
 ---
 
@@ -238,14 +327,50 @@ Open the notebooks in order:
 - **CTGAN 0.10** (SDV ecosystem) — generative model
 - **PyTorch 2.4** — deep learning backend
 - **pandas, NumPy, SciPy** — data processing and statistics
-- **scikit-learn** — Random Forest classifier (TSTR) and Nearest Neighbors (DCR, MIA)
+- **scikit-learn** — Random Forest classifier (TSTR), Nearest Neighbors (DCR, MIA), preprocessing pipelines
 - **matplotlib, seaborn** — visualization
 
 All dependencies pinned in `requirements.txt` for exact reproducibility.
 
 ---
 
+## Repository Structure
 
+```
+ctgan-adult-critical-evaluation/
+├── README.md                    # This document
+├── LICENSE                      # MIT
+├── requirements.txt             # Pinned dependencies
+├── run_training.py              # End-to-end training script
+│
+├── src/                         # Reusable modules
+│   ├── config.py                # Constants, paths, hyperparameters
+│   ├── preprocessing.py         # Adult Census loading and cleaning
+│   ├── training.py              # V1 and V2 CTGAN pipelines
+│   ├── evaluation.py            # 5 metrics + MIA implementation
+│   └── visualization.py         # Reusable plot functions
+│
+├── notebooks/                   # Analytical narratives
+│   ├── 01_exploration_preprocessing.ipynb
+│   ├── 02_baseline_v1.ipynb
+│   └── 03_improved_v2.ipynb
+│
+├── data/
+│   ├── README.md                # How to obtain Adult Census
+│   └── raw/                     # adult.csv (not committed)
+│
+└── results/
+    ├── v1_baseline/
+    │   ├── real_train.csv       # 10K stratified training sample
+    │   ├── real_holdout.csv     # 20K holdout for TSTR
+    │   ├── synthetic.csv        # V1 synthetic data
+    │   └── plots/               # V1 evaluation visualizations
+    └── v2_improved/
+        ├── synthetic.csv        # V2 synthetic data
+        └── plots/               # V2 + V3b + comparison visualizations
+```
+
+---
 
 ## References
 
@@ -272,6 +397,8 @@ Zhao, Z., Kunar, A., Birke, R., & Chen, L. Y. (2022). CTAB-GAN+: Enhancing Tabul
 **Pablo Alberto Duque Marín**
 Master in Artificial Intelligence — Universidad Internacional de La Rioja (UNIR)
 Manizales, Caldas, Colombia
+
+[GitHub](https://github.com/pabdus)
 
 ---
 
