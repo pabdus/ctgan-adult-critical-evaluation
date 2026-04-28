@@ -60,23 +60,7 @@ The answers to these questions, derived from controlled experiments on Adult Cen
 
 ## Methodology
 
-### Pipeline overview
-Raw Adult Census (32,561 × 15)
-│
-├── Drop rows with '?' (~7.4%)
-├── Drop fnlwgt (sampling weight, not an attribute)
-└── Stratified split by income
-│
-├── Train (10,000) ────────────► CTGAN training
-│                                       │
-│                                       ├── V1: standard CTGAN
-│                                       ├── V2: log1p + clip
-│                                       └── V3b: clip-only post-hoc
-│                                                  │
-└── Holdout (20,162) ─────────► TSTR + MIA evaluation
-│
-▼
-5 metrics × 3 variants = 15 evaluations
+
 ### Three variants compared
 
 | Variant | Log-transform on capital.* | Clip negatives | Description |
@@ -261,39 +245,7 @@ All dependencies pinned in `requirements.txt` for exact reproducibility.
 
 ---
 
-## Repository Structure
-ctgan-adult-critical-evaluation/
-├── README.md                    # This document
-├── LICENSE                      # MIT
-├── requirements.txt             # Pinned dependencies
-├── run_training.py              # End-to-end training script
-│
-├── src/                         # Reusable modules
-│   ├── config.py                # Constants, paths, hyperparameters
-│   ├── preprocessing.py         # Adult Census loading and cleaning
-│   ├── training.py              # V1 and V2 CTGAN pipelines
-│   ├── evaluation.py            # 5 metrics + MIA
-│   └── visualization.py         # Reusable plot functions
-│
-├── notebooks/                   # Analytical narratives
-│   ├── 01_exploration_preprocessing.ipynb
-│   ├── 02_baseline_v1.ipynb
-│   └── 03_improved_v2.ipynb
-│
-├── data/
-│   ├── README.md                # How to obtain Adult Census
-│   └── raw/                     # adult.csv (not committed)
-│
-└── results/
-├── v1_baseline/
-│   ├── real_train.csv       # 10K stratified training sample
-│   ├── real_holdout.csv     # 20K holdout for TSTR
-│   ├── synthetic.csv        # V1 synthetic data
-│   └── plots/
-└── v2_improved/
-├── synthetic.csv        # V2 synthetic data
-└── plots/
----
+
 
 ## References
 
