@@ -51,7 +51,3 @@ api_keys.txt
 *.log
 logs/
 
-# Mantener la estructura de carpetas vacías
-!data/raw/.gitkeep
-!results/v1_baseline/.gitkeep
-!results/v2_improved/.gitkeep
